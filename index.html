@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>TikTok Remake - YouTube Feed</title>
+  <title>TikTok Remake - Direct Feed</title>
   <style>
     * {
       box-sizing: border-box;
@@ -39,14 +39,14 @@
       scroll-snap-align: start;
       scroll-snap-stop: always;
       background: #111;
-      overflow: hidden;
+      display: flex;
+      align-items: center;
+      justify-content: center;
     }
-    iframe {
+    video {
       width: 100%;
       height: 100%;
-      border: none;
-      transform: scale(1.3); /* Fits YouTube player aspect ratio to portrait display */
-      pointer-events: none; /* Passes click events through to overlay */
+      object-fit: cover;
     }
     .overlay {
       position: absolute;
@@ -152,59 +152,71 @@
 <div class="tiktok-container" id="feed"></div>
 
 <script>
-  // Random YouTube Shorts/Video IDs Pool
-  const youtubePool = [
-    { id: 'jfKfPfyJRdk', user: '@lofi_girl', caption: 'Beats to relax/study to 🎧 #lofi #youtube' },
-    { id: '5qap5aO4i9A', user: '@chilled_vibes', caption: 'Late night aesthetic ✨ #shorts #vibes' },
-    { id: '3JZ_D3ELwOQ', user: '@tech_shorts', caption: 'Short coding clip 💻 #dev #shorts' },
-    { id: 'L_LUpnjgPso', user: '@ambient_nature', caption: 'Relaxing views 🌿 #nature #shorts' },
-    { id: '2g811Ko7K8U', user: '@music_daily', caption: 'Acoustic sessions 🎸 #music' }
+  // Direct open-access MP4 video sources (No embed restrictions, works everywhere)
+  const videoPool = [
+    {
+      url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4',
+      user: '@blaze_vibe',
+      caption: 'High quality test stream 🔥 #video #fyp',
+      music: '🎵 Original Sound - Blaze'
+    },
+    {
+      url: 'https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4',
+      user: '@nature_daily',
+      caption: 'Macro view of blooming floral 🌸 #nature #macro',
+      music: '🎵 Relaxing Ambient'
+    },
+    {
+      url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4',
+      user: '@escape_artist',
+      caption: 'Escaping into nature ✨ #outdoors #travel',
+      music: '🎵 Chill Beats'
+    },
+    {
+      url: 'https://www.w3schools.com/html/mov_bbb.mp4',
+      user: '@bunny_shorts',
+      caption: 'Classic open source animation 🐰 #3d #render',
+      music: '🎵 Cartoon Soundtrack'
+    },
+    {
+      url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyrides.mp4',
+      user: '@joyrider',
+      caption: 'Night cruising around the city 🚘 #driving',
+      music: '🎵 Synthwave Beats'
+    }
   ];
 
   const container = document.getElementById('feed');
 
-  // Send API commands directly to YouTube iframe via postMessage
-  function sendYTCommand(iframe, func, args = []) {
-    if (iframe && iframe.contentWindow) {
-      iframe.contentWindow.postMessage(
-        JSON.stringify({ event: 'command', func: func, args: args }),
-        '*'
-      );
-    }
-  }
-
-  // Intersection Observer for Youtube iFrames
+  // IntersectionObserver to auto-play focused video and pause hidden ones
   const observer = new IntersectionObserver((entries) => {
     entries.forEach(entry => {
-      const iframe = entry.target.querySelector('iframe');
-      if (!iframe) return;
-
+      const video = entry.target.querySelector('video');
+      if (!video) return;
       if (entry.isIntersecting) {
-        sendYTCommand(iframe, 'playVideo');
+        video.play().catch(() => {});
       } else {
-        sendYTCommand(iframe, 'pauseVideo');
+        video.pause();
+        video.currentTime = 0;
       }
     });
   }, { threshold: 0.6 });
 
-  // Get random video from pool
-  function getRandomVideo() {
-    return youtubePool[Math.floor(Math.random() * youtubePool.length)];
+  // Random item selector
+  function getRandomItem() {
+    return videoPool[Math.floor(Math.random() * videoPool.length)];
   }
 
   function createCard() {
     const card = document.createElement('div');
     card.className = 'video-card';
 
-    const item = getRandomVideo();
-    const likes = (Math.random() * 90 + 5).toFixed(1) + 'K';
-    const comments = Math.floor(Math.random() * 900 + 100);
-
-    // Build YouTube embed string with API enabled
-    const embedUrl = `https://www.youtube.com/embed/${item.id}?enablejsapi=1&autoplay=1&mute=1&controls=0&loop=1&playlist=${item.id}&rel=0&modestbranding=1`;
+    const item = getRandomItem();
+    const likes = (Math.random() * 80 + 1).toFixed(1) + 'K';
+    const comments = Math.floor(Math.random() * 800 + 50);
 
     card.innerHTML = `
-      <iframe src="${embedUrl}" allow="autoplay; encrypted-media" frameborder="0"></iframe>
+      <video loop playsinline muted preload="metadata" src="${item.url}"></video>
       <div class="overlay">
         <div class="top-bar">
           <span>Following</span>
@@ -214,7 +226,7 @@
           <div class="user-details">
             <div class="username">${item.user}</div>
             <div class="caption">${item.caption}</div>
-            <div class="music">🎵 YouTube Sound Stream</div>
+            <div class="music">${item.music}</div>
           </div>
           <div class="sidebar">
             <button class="action-btn" onclick="toggleAudio(this)">
@@ -235,14 +247,13 @@
       </div>
     `;
 
-    let isMuted = true;
+    // Toggle mute state on card tap
     card.addEventListener('click', (e) => {
       if (!e.target.closest('button')) {
-        const iframe = card.querySelector('iframe');
-        const soundLabel = card.querySelector('.sound-label');
-        isMuted = !isMuted;
-        sendYTCommand(iframe, isMuted ? 'mute' : 'unMute');
-        if (soundLabel) soundLabel.textContent = isMuted ? 'Muted' : 'Sound On';
+        const video = card.querySelector('video');
+        video.muted = !video.muted;
+        const label = card.querySelector('.sound-label');
+        if (label) label.textContent = video.muted ? 'Muted' : 'Sound On';
       }
     });
 
@@ -256,9 +267,9 @@
     }
   }
 
-  // Infinite Scroll Trigger
+  // Infinite Scroll Listener
   container.addEventListener('scroll', () => {
-    if (container.scrollTop + container.clientHeight >= container.scrollHeight - 200) {
+    if (container.scrollTop + container.clientHeight >= container.scrollHeight - 250) {
       appendBatch(2);
     }
   });
@@ -269,16 +280,14 @@
 
   function toggleAudio(btn) {
     const card = btn.closest('.video-card');
-    const iframe = card.querySelector('iframe');
-    const soundLabel = card.querySelector('.sound-label');
-    const isMuted = soundLabel.textContent === 'Sound On';
-
-    sendYTCommand(iframe, isMuted ? 'mute' : 'unMute');
-    soundLabel.textContent = isMuted ? 'Muted' : 'Sound On';
+    const video = card.querySelector('video');
+    const label = card.querySelector('.sound-label');
+    video.muted = !video.muted;
+    if (label) label.textContent = video.muted ? 'Muted' : 'Sound On';
   }
 
-  // Initial load
-  appendBatch(3);
+  // Initial feed population
+  appendBatch(4);
 </script>
 
 </body>
