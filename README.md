@@ -1,2 +1,0 @@
-# SlopScroll
-stupid webapp
