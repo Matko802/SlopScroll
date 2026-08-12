@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>TikTok Remake - Direct Feed</title>
+  <title>TikTok Feed - PeerTube Open Source API</title>
   <style>
     * {
       box-sizing: border-box;
@@ -97,6 +97,10 @@
       font-size: 14px;
       margin-bottom: 10px;
       line-height: 1.3;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
     }
     .music {
       display: flex;
@@ -142,6 +146,14 @@
       animation: spin 3s linear infinite;
       margin-top: 8px;
     }
+    .loading-notice {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      font-size: 14px;
+      color: #888;
+    }
     @keyframes spin {
       100% { transform: rotate(360deg); }
     }
@@ -149,46 +161,17 @@
 </head>
 <body>
 
-<div class="tiktok-container" id="feed"></div>
+<div class="tiktok-container" id="feed">
+  <div class="loading-notice" id="loader">Loading PeerTube Stream...</div>
+</div>
 
 <script>
-  // Direct open-access MP4 video sources (No embed restrictions, works everywhere)
-  const videoPool = [
-    {
-      url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4',
-      user: '@blaze_vibe',
-      caption: 'High quality test stream 🔥 #video #fyp',
-      music: '🎵 Original Sound - Blaze'
-    },
-    {
-      url: 'https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4',
-      user: '@nature_daily',
-      caption: 'Macro view of blooming floral 🌸 #nature #macro',
-      music: '🎵 Relaxing Ambient'
-    },
-    {
-      url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4',
-      user: '@escape_artist',
-      caption: 'Escaping into nature ✨ #outdoors #travel',
-      music: '🎵 Chill Beats'
-    },
-    {
-      url: 'https://www.w3schools.com/html/mov_bbb.mp4',
-      user: '@bunny_shorts',
-      caption: 'Classic open source animation 🐰 #3d #render',
-      music: '🎵 Cartoon Soundtrack'
-    },
-    {
-      url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyrides.mp4',
-      user: '@joyrider',
-      caption: 'Night cruising around the city 🚘 #driving',
-      music: '🎵 Synthwave Beats'
-    }
-  ];
-
   const container = document.getElementById('feed');
+  const loader = document.getElementById('loader');
+  let fetchedVideos = [];
+  let startOffset = 0;
 
-  // IntersectionObserver to auto-play focused video and pause hidden ones
+  // IntersectionObserver to handle autoplaying active video and pausing inactive ones
   const observer = new IntersectionObserver((entries) => {
     entries.forEach(entry => {
       const video = entry.target.querySelector('video');
@@ -202,25 +185,51 @@
     });
   }, { threshold: 0.6 });
 
-  // Random item selector
-  function getRandomItem() {
-    return videoPool[Math.floor(Math.random() * videoPool.length)];
+  // Fetch public videos directly from open-source PeerTube REST API
+  async function fetchPeerTubeVideos() {
+    try {
+      // Endpoint retrieves public video list from an active PeerTube instance
+      const response = await fetch(`https://peertube.tv/api/v1/videos?start=${startOffset}&count=10&sort=-publishedAt`);
+      const data = await response.json();
+      
+      startOffset += 10;
+
+      // Extract items that have direct stream files available
+      const items = data.data.filter(v => v.files && v.files.length > 0 || v.streamingPlaylists && v.streamingPlaylists.length > 0).map(v => {
+        // Grab lowest resolution direct file URL for fast mobile streaming
+        const streamUrl = v.files.length > 0 
+          ? v.files[0].fileUrl 
+          : v.streamingPlaylists[0].files[0].fileUrl;
+
+        return {
+          url: streamUrl,
+          user: '@' + (v.account ? v.account.displayName || v.account.name : 'peertube_user'),
+          caption: v.name,
+          music: '🎵 Open Source Media - PeerTube'
+        };
+      });
+
+      // Randomize fetched video batch
+      return items.sort(() => Math.random() - 0.5);
+    } catch (err) {
+      console.error('PeerTube API Fetch Error:', err);
+      return [];
+    }
   }
 
-  function createCard() {
+  function createCard(item) {
     const card = document.createElement('div');
     card.className = 'video-card';
 
-    const item = getRandomItem();
-    const likes = (Math.random() * 80 + 1).toFixed(1) + 'K';
-    const comments = Math.floor(Math.random() * 800 + 50);
+    const likes = (Math.random() * 50 + 1).toFixed(1) + 'K';
+    const comments = Math.floor(Math.random() * 400 + 20);
 
     card.innerHTML = `
       <video loop playsinline muted preload="metadata" src="${item.url}"></video>
       <div class="overlay">
         <div class="top-bar">
           <span>Following</span>
-          <span class="active">For You</span>
+          <span class="active">PeerTube Feed</span>
         </div>
         <div class="bottom-section">
           <div class="user-details">
@@ -247,7 +256,6 @@
       </div>
     `;
 
-    // Toggle mute state on card tap
     card.addEventListener('click', (e) => {
       if (!e.target.closest('button')) {
         const video = card.querySelector('video');
@@ -261,16 +269,24 @@
     return card;
   }
 
-  function appendBatch(count = 3) {
-    for (let i = 0; i < count; i++) {
-      container.appendChild(createCard());
+  async function loadMoreVideos(count = 3) {
+    if (fetchedVideos.length < count) {
+      const newVideos = await fetchPeerTubeVideos();
+      fetchedVideos.push(...newVideos);
+    }
+
+    if (loader) loader.style.display = 'none';
+
+    for (let i = 0; i < count && fetchedVideos.length > 0; i++) {
+      const item = fetchedVideos.shift();
+      container.appendChild(createCard(item));
     }
   }
 
-  // Infinite Scroll Listener
+  // Infinite Scroll Handler
   container.addEventListener('scroll', () => {
-    if (container.scrollTop + container.clientHeight >= container.scrollHeight - 250) {
-      appendBatch(2);
+    if (container.scrollTop + container.clientHeight >= container.scrollHeight - 300) {
+      loadMoreVideos(2);
     }
   });
 
@@ -286,8 +302,8 @@
     if (label) label.textContent = video.muted ? 'Muted' : 'Sound On';
   }
 
-  // Initial feed population
-  appendBatch(4);
+  // Initial load
+  loadMoreVideos(4);
 </script>
 
 </body>
